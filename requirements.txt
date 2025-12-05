@@ -1,0 +1,15 @@
+# Web Framework
+fastapi[standard]
+
+# The Parsing Engine (CST)
+tree-sitter
+tree-sitter-python
+
+# AI & LLM Integration
+langchain
+langchain-google-genai
+pydantic
+
+# Utilities
+python-dotenv
+requests
