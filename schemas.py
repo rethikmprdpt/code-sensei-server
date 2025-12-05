@@ -1,6 +1,17 @@
 from pydantic import BaseModel, Field
 
 
+class CodeRequest(BaseModel):
+    code: str
+
+
+class FeedbackRequest(BaseModel):
+    function_name: str
+    code: str
+    explanation: str
+    rating: int  # 1 or -1
+
+
 class CodeIssue(BaseModel):
     issue_type: str = Field(
         ...,
