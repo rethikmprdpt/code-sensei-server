@@ -7,21 +7,11 @@ from tree_sitter import Language, Parser
 
 
 class LanguageStrategy:
-    """
-    Configuration class to map a specific language grammar.
-
-    to the node types that represent 'functions' or 'methods' in that language.
-    """
-
     def __init__(self, lang_module, function_node_types):
-        # Load the compiled C grammar
         self.language = Language(lang_module.language())
-        # List of node types to search for (e.g. ['function_definition', 'arrow_function'])
         self.function_node_types = function_node_types
 
 
-# --- STRATEGY MAPPING ---
-# This dictionary maps the frontend selection to specific Tree-sitter configurations.
 STRATEGIES = {
     "python": LanguageStrategy(tree_sitter_python, ["function_definition"]),
     "javascript": LanguageStrategy(
@@ -45,8 +35,7 @@ class TreeSitterParser:
         self.parser = Parser()
 
     def extract_functions(self, code: str, lang_name: str = "python"):
-        """Main entry point. Parses code and extracts function blocks based on language."""
-        # 1. Normalize Language Name (handle c++ -> cpp, c# -> csharp)
+        # 1. Normalize Language Name
         key = lang_name.lower().replace("#", "sharp").replace("++", "cpp")
 
         # 2. Load Strategy
@@ -60,9 +49,13 @@ class TreeSitterParser:
         # 3. Configure Parser
         self.parser.language = strategy.language
 
-        # 4. Parse Code (Tree-sitter expects bytes)
+        # 4. Parse Code
         tree = self.parser.parse(bytes(code, "utf8"))
         root_node = tree.root_node
+
+        # --- NEW: VALIDATION CHECK ---
+        # If the code looks like garbage for this language, stop immediately.
+        self._check_syntax_validity(root_node, lang_name)
 
         functions: list[LanguageStrategy] = []
 
@@ -76,27 +69,63 @@ class TreeSitterParser:
 
         return functions
 
+    def _check_syntax_validity(self, root_node, lang_name):
+        """
+        Calculates the ratio of ERROR nodes to total nodes.
+
+        If too many errors, assumes language mismatch.
+        """
+        total_nodes = 0
+        error_nodes = 0
+
+        cursor = root_node.walk()
+        visited_children = False
+
+        while True:
+            total_nodes += 1
+            if cursor.node.type == "ERROR":
+                error_nodes += 1
+
+            # Depth-First Search Traversal
+            if (
+                not visited_children and cursor.goto_first_child()
+            ) or cursor.goto_next_sibling():
+                visited_children = False
+            elif cursor.goto_parent():
+                visited_children = True
+            else:
+                break
+
+        if total_nodes == 0:
+            return  # Empty file, let other logic handle it
+
+        error_ratio = error_nodes / total_nodes
+
+        # Threshold: If > 5% of the tree is syntax errors, reject it.
+        if error_ratio > 0.05:  # noqa: PLR2004
+            msg = (
+                f"High syntax error rate ({error_ratio:.1%}). "
+                f"Are you sure this is {lang_name} code? "
+                "Please check your language selection."
+            )
+            raise ValueError(
+                msg,
+            )
+
     def _find_functions_recursive(self, node, code, functions, target_types):
-        """Recursively searches the tree for nodes matching the target types."""
         if node.type in target_types:
             functions.append(self._process_node(node, code))
 
-        # Recurse into children (e.g., methods inside classes, functions inside namespaces)
         for child in node.children:
             self._find_functions_recursive(child, code, functions, target_types)
 
     def _process_node(self, node, full_code: str):
-        """Extracts metadata, raw code, and body text from a specific node."""
-        # Tree-sitter uses 0-indexed rows, we convert to 1-indexed for UI display
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
 
         lines = full_code.split("\n")
-        # Extract the exact source code for this block
         function_source = "\n".join(lines[start_line - 1 : end_line])
 
-        # Extract BODY ONLY for Deduplication (ignoring function name changes)
-        # Most languages have a 'body' or 'block' child field
         body_node = node.child_by_field_name("body")
         body_text = body_node.text.decode("utf8") if body_node else ""
 
@@ -105,54 +134,15 @@ class TreeSitterParser:
             "start_line": start_line,
             "end_line": end_line,
             "code": function_source,
-            "body_only": body_text,  # Used for hashing in the DB
+            "body_only": body_text,
         }
 
     def _get_name(self, node):
-        """
-        Heuristic to find the function name.
-
-        Different languages use different field names for the identifier.
-        """
-        # Python/JS/C++ often use 'name'
         name_node = node.child_by_field_name("name")
-
-        # C++/Java sometimes use 'declarator'
         if not name_node:
             name_node = node.child_by_field_name("declarator")
 
         if name_node:
-            # If the declarator is complex (e.g., pointer *foo), we might need to dig deeper
-            # For this POC, getting the raw text of the name node is sufficient
             return name_node.text.decode("utf8")
 
         return "anonymous"
-
-
-# --- TEST BLOCK ---
-if __name__ == "__main__":
-    parser = TreeSitterParser()
-
-    print("--- Testing Python ---")
-    py_code = """
-    def my_func(x):
-        return x * 2
-    """
-    print(parser.extract_functions(py_code, "python"))
-
-    print("\n--- Testing C++ ---")
-    cpp_code = """
-    int main() {
-        return 0;
-    }
-    """
-    print(parser.extract_functions(cpp_code, "cpp"))
-
-    print("\n--- Testing JavaScript ---")
-    js_code = """
-    function hello() {
-        console.log("world");
-    }
-    const arrow = () => { return true; }
-    """
-    print(parser.extract_functions(js_code, "javascript"))

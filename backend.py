@@ -6,19 +6,17 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from ai_agent import CodeSenseiAgent
+from ai_agent import run_agent
 from database import create_table, get_db
-
-# Import our custom engines
 from parser_engine import TreeSitterParser
 from schemas import CodeRequest, FeedbackRequest
 
 app = FastAPI(title="Code Sensei API")
 
 # --- 1. CORS CONFIGURATION ---
-# Allow the React frontend to talk to this backend
 origins = [
-    "http://localhost:5173",  # Vite default
+    "http://localhost:5173",
+    "http://localhost:3000",
 ]
 
 app.add_middleware(
@@ -29,38 +27,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- 2. INITIALIZATION ---
 try:
     parser = TreeSitterParser()
-    agent = CodeSenseiAgent()
     create_table()
     print("✅ Engines initialized successfully.")
 except Exception as e:  # noqa: BLE001
     print(f"❌ Failed to initialize engines: {e}")
-    # We don't exit here so the server still runs, but it will error on request
 
 
 @app.post("/analyze")
 async def analyze_code(request: CodeRequest):
-    """
-    Instructions.
-
-    1. Parse the code into functions (CST).
-    2. Send each function to Gemini (AI).
-    3. Return a list of reports.
-    """
+    """Analyzes code with Language Mismatch Detection."""
     raw_code = request.code
     if not raw_code.strip():
         raise HTTPException(status_code=400, detail="Code cannot be empty")
 
     results = []
 
-    # Step A: Parse Code
+    # Step A: Parse Code with Safety Check
     try:
         functions = parser.extract_functions(raw_code, lang_name=request.language)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Parser Error: {e!s}")  # noqa: B904
 
-    # Fallback: If no functions found (e.g., just a script), treat whole file as one block
+    # Catch the Language Mismatch specifically
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    except Exception as e:
+        # Unexpected parser crashes
+        raise HTTPException(status_code=500, detail=f"Parser Error: {e!s}") from e
+
     if not functions:
         functions = [
             {
@@ -73,13 +69,11 @@ async def analyze_code(request: CodeRequest):
 
     # Step B: Analyze each block
     for func in functions:
-        print(f"🤖 Analyzing function: {func['name']}...")
+        print(f"🤖 Analyzing function: {func['name']} ({request.language})...")
 
         try:
-            analysis = agent.analyze_function(func["code"], func["name"])
+            analysis = run_agent(func["code"], request.language, func["name"])
 
-            # Merge the AI result with the Location data (Line numbers)
-            # This is CRITICAL for the frontend to know where to draw squiggles
             full_report = {
                 "meta": {
                     "function_name": func["name"],
@@ -93,7 +87,6 @@ async def analyze_code(request: CodeRequest):
 
         except Exception as e:  # noqa: BLE001
             print(f"⚠️ AI Analysis failed for {func['name']}: {e}")
-            # We continue processing other functions even if one fails
             results.append({"meta": func, "error": {"message": str(e)}})
 
     return {"results": results}
@@ -103,8 +96,9 @@ async def analyze_code(request: CodeRequest):
 def health_check():
     return {
         "status": "active",
-        "parser": "tree-sitter-python",
-        "agent": "gemini-2.5-pro",
+        "parser": "tree-sitter-polyglot",
+        "agent": "langgraph-multi-expert",
+        "version": "v1.0.0",
     }
 
 
@@ -113,27 +107,12 @@ async def collect_feedback(
     feedback: FeedbackRequest,
     conn: Annotated[Connection, Depends(get_db)],
 ):
-    """
-    Implements 'Signal Aggregation'.
-
-    If data exists, we boost its signal (weights) instead of creating duplicates.
-    """
     cursor = conn.cursor()
-
-    # 1. Normalization (The "Canonical" Step)
-    # Simple strategy: Remove all whitespace to ignore formatting differences
-    # In a real compiler role, you'd use Tree-sitter to strip comments too.
     normalized_code = re.sub(r"\s+", "", feedback.code)
-
-    # 2. Structural Hashing
     code_hash = hashlib.sha256(normalized_code.encode("utf-8")).hexdigest()
-
-    # 3. Determine Vote Direction
     vote_col = "upvotes" if feedback.rating > 0 else "downvotes"
 
     try:
-        # 4. The UPSERT (Insert or Update)
-        # SQLite syntax: ON CONFLICT(columns) DO UPDATE SET ...
         query = f"""
             INSERT INTO feedback_loops
             (code_hash, function_name, code_snippet, ai_explanation, {vote_col})
@@ -142,15 +121,12 @@ async def collect_feedback(
             DO UPDATE SET
                 {vote_col} = {vote_col} + 1,
                 last_updated = CURRENT_TIMESTAMP
-        """  # noqa: S608
-
+        """
         cursor.execute(
             query,
             (code_hash, feedback.function_name, feedback.code, feedback.explanation),
         )
-
         conn.commit()
-
     except Exception as e:
         print(f"DB Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to save feedback") from e

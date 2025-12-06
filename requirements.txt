@@ -12,6 +12,7 @@ tree-sitter-python
 # AI & LLM Integration
 langchain
 langchain-google-genai
+langgraph
 pydantic
 
 # Utilities
