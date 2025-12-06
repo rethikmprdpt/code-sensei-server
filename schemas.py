@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 class CodeRequest(BaseModel):
     code: str
+    language: str = "python"
 
 
 class FeedbackRequest(BaseModel):

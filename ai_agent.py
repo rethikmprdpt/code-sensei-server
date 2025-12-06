@@ -19,7 +19,7 @@ class CodeSenseiAgent:
         # Initialize Gemini
         # We use a low temperature for strict factual analysis
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-pro",  # Or "gemini-1.5-flash" / "gemini-2.0-flash-exp"
+            model="gemini-2.5-pro",
             temperature=0.0,
             google_api_key=api_key,
             max_retries=2,

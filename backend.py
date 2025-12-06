@@ -56,7 +56,7 @@ async def analyze_code(request: CodeRequest):
 
     # Step A: Parse Code
     try:
-        functions = parser.extract_functions(raw_code)
+        functions = parser.extract_functions(raw_code, lang_name=request.language)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Parser Error: {e!s}")  # noqa: B904
 
