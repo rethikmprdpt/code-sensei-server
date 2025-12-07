@@ -1,5 +1,6 @@
 import hashlib
 import re
+from contextlib import asynccontextmanager
 from sqlite3 import Connection
 from typing import Annotated
 
@@ -8,10 +9,19 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ai_agent import run_agent
 from database import create_table, get_db
-from parser_engine import TreeSitterParser
+from parser_engine import TreeSitterParser, get_parser
 from schemas import CodeRequest, FeedbackRequest
 
-app = FastAPI(title="Code Sensei API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # noqa: ARG001
+    # Startup: Create DB Tables
+    create_table()
+    yield
+    # Shutdown: Clean up if necessary
+
+
+app = FastAPI(title="Code Sensei API", lifespan=lifespan)
 
 # --- 1. CORS CONFIGURATION ---
 origins = [
@@ -27,17 +37,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 2. INITIALIZATION ---
-try:
-    parser = TreeSitterParser()
-    create_table()
-    print("✅ Engines initialized successfully.")
-except Exception as e:  # noqa: BLE001
-    print(f"❌ Failed to initialize engines: {e}")
-
 
 @app.post("/analyze")
-async def analyze_code(request: CodeRequest):
+async def analyze_code(
+    request: CodeRequest,
+    parser: Annotated[TreeSitterParser, Depends(get_parser)],
+):
     """Analyzes code with Language Mismatch Detection."""
     raw_code = request.code
     if not raw_code.strip():

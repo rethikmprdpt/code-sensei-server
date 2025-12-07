@@ -22,7 +22,7 @@ def analyze_with_persona(
 
     # Initialize Gemini
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-pro",
+        model="gemini-2.5-flash",
         temperature=0,
         google_api_key=api_key,
     )

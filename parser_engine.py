@@ -1,3 +1,5 @@
+from typing import Any
+
 import tree_sitter_c_sharp as tree_sitter_csharp
 import tree_sitter_cpp
 import tree_sitter_java
@@ -57,7 +59,7 @@ class TreeSitterParser:
         # If the code looks like garbage for this language, stop immediately.
         self._check_syntax_validity(root_node, lang_name)
 
-        functions: list[LanguageStrategy] = []
+        functions: list[dict[str, Any]] = []
 
         # 5. Recursive Walk
         self._find_functions_recursive(
@@ -146,3 +148,13 @@ class TreeSitterParser:
             return name_node.text.decode("utf8")
 
         return "anonymous"
+
+
+def get_parser():
+    """
+    Creates a new parser instance for each request.
+
+    This prevents race conditions where Request A changes the language
+    while Request B is parsing.
+    """
+    return TreeSitterParser()
