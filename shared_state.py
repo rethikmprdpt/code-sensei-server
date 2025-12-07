@@ -9,3 +9,4 @@ class AgentState(TypedDict):
     function_name: str
     analysis: dict | None  # The Pydantic output
     error: str | None
+    linter_errors: list[str] | None

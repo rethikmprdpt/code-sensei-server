@@ -11,8 +11,7 @@ from experts import (
     js_expert,
     python_expert,
 )
-
-# Import State
+from linter_engine import run_python_linter
 from shared_state import AgentState
 
 
@@ -23,6 +22,19 @@ def guardrail_node(state: AgentState):
     if not code or len(code.strip()) < 5:  # noqa: PLR2004
         return {"error": "Input is too short or empty."}
     return {"error": None}
+
+
+def linter_node(state: AgentState):
+    code = state["code"]
+    lang = state["language"].lower()
+
+    errors = []
+    if lang == "python":
+        errors = run_python_linter(code)
+
+    # We can add C++/Java linters here later
+
+    return {"linter_errors": errors}
 
 
 # --- 2. ROUTER LOGIC ---
@@ -62,6 +74,7 @@ workflow = StateGraph(AgentState)
 
 # Add Nodes
 workflow.add_node("guardrail", guardrail_node)
+workflow.add_node("linter", linter_node)
 workflow.add_node("python_expert", python_expert)
 workflow.add_node("cpp_expert", cpp_expert)
 workflow.add_node("js_expert", js_expert)
@@ -71,10 +84,11 @@ workflow.add_node("generic_expert", generic_expert)
 
 # Set Entry
 workflow.set_entry_point("guardrail")
+workflow.add_edge("guardrail", "linter")
 
 # Add Edges
 workflow.add_conditional_edges(
-    "guardrail",
+    "linter",
     route_language,
     {
         "python_expert": "python_expert",
@@ -109,6 +123,7 @@ def run_agent(code: str, language: str, function_name: str) -> dict:
         "function_name": function_name,
         "analysis": None,
         "error": None,
+        "linter_errors": None,
     }
 
     result = graph.invoke(initial_state)  # type: ignore #noqa:PGH003

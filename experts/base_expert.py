@@ -1,3 +1,4 @@
+# ruff: noqa: PGH003
 import os
 
 from dotenv import load_dotenv
@@ -30,15 +31,23 @@ def analyze_with_persona(
     # Bind Schema
     structured_llm = llm.with_structured_output(CodeSenseiAnalysis)
 
-    # Construct the Persona-based System Prompt
+    linter_section = ""
+
+    # Check if linter_errors exists AND is not empty
+    if state.get("linter_errors") and len(state["linter_errors"]) > 0:  # type: ignore
+        errors_str = "\n".join(state["linter_errors"])  # type: ignore
+        linter_section = f"\n\n### STATIC ANALYSIS REPORT (Verified Bugs) ###\n{errors_str}\n\nINSTRUCTION: The code above has verified compilation/linting errors. Explain these errors to the user first, then analyze the logic."
+    # 2. Define Prompt with a Placeholder
+    # We use {linter_context} so LangChain handles the injection safely
     system_prompt = (
         f"You are a Senior {lang_label} Engineer and Code Sensei. "
         "Explain code to junior devs and catch 'Knowledge Debt'.\n"
-        f"SPECIFIC FOCUS: {specific_instructions}\n\n"
+        f"SPECIFIC FOCUS: {specific_instructions}\n"
         "CRITICAL RULES:\n"
         "1. Identify Big O complexity issues.\n"
         "2. Suggest specific fixes matching the language idioms.\n"
         "3. Be kind but firm."
+        "{linter_context}"
     )
 
     prompt = ChatPromptTemplate.from_messages(
@@ -52,9 +61,14 @@ def analyze_with_persona(
 
     try:
         result = chain.invoke(
-            {"lang": lang_label, "name": state["function_name"], "code": state["code"]},
+            {
+                "lang": lang_label,
+                "name": state["function_name"],
+                "code": state["code"],
+                "linter_context": linter_section,
+            },
         )
         # Return the Pydantic model dumped as a dict
-        return {"analysis": result.model_dump()}  # type: ignore  # noqa: PGH003
+        return {"analysis": result.model_dump()}  # type: ignore
     except Exception as e:  # noqa: BLE001
         return {"error": f"LLM Generation Failed: {e!s}"}
