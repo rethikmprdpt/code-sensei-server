@@ -20,5 +20,6 @@ def python_expert(state: AgentState):
         "Mandate vectorization and native numpy/pandas methods for performance. "
         "5. Holistic Logic Review: Do not limit analysis to syntax; proactively look for logical errors (e.g., off-by-one errors, scope issues), "
         "race conditions, lack of Type Hints, or security vulnerabilities (e.g., SQL injection risks)."
+        "If the code uses specific libraries (like subprocess, pandas, flake8), briefly explain how they are used and any arguments or flags used."
     )
     return analyze_with_persona(state, "Python", instructions)

@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
 app = FastAPI(title="Code Sensei API", lifespan=lifespan)
 
-# --- 1. CORS CONFIGURATION ---
+
 origins = [
     "http://localhost:5173",
     "http://localhost:3000",
@@ -126,7 +126,7 @@ async def collect_feedback(
             DO UPDATE SET
                 {vote_col} = {vote_col} + 1,
                 last_updated = CURRENT_TIMESTAMP
-        """
+        """  # noqa: S608
         cursor.execute(
             query,
             (code_hash, feedback.function_name, feedback.code, feedback.explanation),

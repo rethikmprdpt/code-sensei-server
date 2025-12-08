@@ -37,6 +37,7 @@ def analyze_with_persona(
     if state.get("linter_errors") and len(state["linter_errors"]) > 0:  # type: ignore
         errors_str = "\n".join(state["linter_errors"])  # type: ignore
         linter_section = f"\n\n### STATIC ANALYSIS REPORT (Verified Bugs) ###\n{errors_str}\n\nINSTRUCTION: The code above has verified compilation/linting errors. Explain these errors to the user first, then analyze the logic."
+
     # 2. Define Prompt with a Placeholder
     # We use {linter_context} so LangChain handles the injection safely
     system_prompt = (
