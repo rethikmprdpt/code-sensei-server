@@ -50,3 +50,15 @@ class CodeSenseiAnalysis(BaseModel):
         ...,
         description="A generic score from 1-10 (10 being perfect code)",
     )
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    code_context: str
+    language: str
+    history: list[ChatMessage] = []

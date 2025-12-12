@@ -8,9 +8,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from ai_agent import run_agent
+from chat_agent import CodeSenseiChat
 from database import create_table, get_db
 from parser_engine import TreeSitterParser, get_parser
-from schemas import CodeRequest, FeedbackRequest
+from schemas import ChatRequest, CodeRequest, FeedbackRequest
 
 
 @asynccontextmanager
@@ -19,6 +20,10 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     create_table()
     yield
     # Shutdown: Clean up if necessary
+
+
+def get_chat_agent():
+    return CodeSenseiChat()
 
 
 app = FastAPI(title="Code Sensei API", lifespan=lifespan)
@@ -137,3 +142,20 @@ async def collect_feedback(
         raise HTTPException(status_code=500, detail="Failed to save feedback") from e
     else:
         return {"status": "success", "message": "Signal aggregated successfully"}
+
+
+@app.post("/chat")
+async def chat_with_sensei(
+    request: ChatRequest, chat_agent: Annotated[CodeSenseiChat, Depends(get_chat_agent)]
+):
+    try:
+        response_text = chat_agent.chat(
+            user_message=request.message,
+            code_context=request.code_context,
+            language=request.language,
+            history=request.history,
+        )
+        return {"response": response_text}
+    except Exception as e:
+        print(f"Chat Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
